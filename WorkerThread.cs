@@ -21,11 +21,8 @@ class WorkerThread
     private bool _started = false;
     
 
-    public Queue<Function> Jobs
-    {
-        get { return _jobs; }
-    }
-
+    public Queue<Function> Jobs => _jobs;
+    public int NumJobs => _jobs.Count;
 
 
     public WorkerThread()
@@ -46,8 +43,16 @@ class WorkerThread
     }
 
 
+    ~WorkerThread()
+    {
+        Abort();
+    }
+
+
     public void Start()
     {
+        if (_started) return;
+
         _workerThread = new Thread(ThreadLoop);
         _workerThread.Start();
         _started = true;
@@ -65,11 +70,7 @@ class WorkerThread
 
             if (_jobs.Count != 0)
             {
-                _jobsMutex.WaitOne();
-                Function newJob = _jobs.Peek();
-                _jobsMutex.ReleaseMutex();
-
-                newJob.Invoke();
+                _jobs.Peek().Invoke();
 
                 _jobsMutex.WaitOne();
                 _jobs.Dequeue();
@@ -108,13 +109,14 @@ class WorkerThread
             {
                 _workerThread.Abort();
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 Join();
             }
         }
 
         _abort = false;
+        _started = false;
     }
 
 
@@ -127,6 +129,7 @@ class WorkerThread
         _workSemaphore.Release();
         _workerThread.Join();
         _join = false;
+        _started = false;
     }
 
 
@@ -140,11 +143,13 @@ class WorkerThread
         if (!_workerThread.Join(milliseconds))
         {
             _join = false;
-            _workSemaphore.WaitOne(10);
+            _workSemaphore.WaitOne();
             return false;
         }
 
         _join = false;
+        _started = false;
+
         return true;
     }
 }

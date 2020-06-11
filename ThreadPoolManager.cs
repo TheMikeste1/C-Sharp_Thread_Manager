@@ -6,11 +6,7 @@ using System.Threading;
 
 class ThreadPoolManager
 {
-    private List<Thread> _threadPool;
-    private List<bool> _freeThreads;
-
-    private Semaphore _workSemaphore;
-    private Semaphore _openThreadSemaphore;
+    private List<WorkerThread> _threadPool;
 
     private int _maxThreads;
 
@@ -23,7 +19,6 @@ class ThreadPoolManager
             if (value > _maxThreads)
             {
                 _threadPool.Capacity = value;
-                _freeThreads.Capacity = value;
             }
             else if (value < _maxThreads)
             {
@@ -31,7 +26,6 @@ class ThreadPoolManager
                     throw new ArgumentOutOfRangeException(nameof(value), "At least one thread must be enabled!");
 
                 int numThreadsToRemove = _maxThreads - value;
-                _freeThreads.RemoveRange(value, numThreadsToRemove);
 
                 new Thread(() =>
                 {
@@ -59,38 +53,119 @@ class ThreadPoolManager
     {
         get
         {
-            return _threadPool.Count;
+            int count = 0;
+
+            foreach (var thread in _threadPool)
+            {
+                if (thread.Jobs.Count > 0)
+                    count++;
+            }
+            return count;
         }
     }
 
-    public ThreadPoolManager() : this(10) {}
+    public ThreadPoolManager() : this(10)
+    {
+    }
 
     public ThreadPoolManager(int maxThreads)
     {
         if (maxThreads <= 0)
             throw new ArgumentOutOfRangeException(nameof(maxThreads), "At least one thread must be enabled!");
-        
-        _maxThreads = maxThreads;
-        
-        _workSemaphore = new Semaphore(0, Int32.MaxValue, "Work Semaphore");
-        _openThreadSemaphore = new Semaphore(_maxThreads, Int32.MaxValue, "Open Thread Semaphore");
 
-        _threadPool = new List<Thread>(maxThreads);
-        _freeThreads = new List<bool>(Enumerable.Repeat(true, maxThreads));
+        _maxThreads = maxThreads;
+
+        _threadPool = new List<WorkerThread>();
+        for (int i = 0; i < maxThreads; i++)
+        {
+            _threadPool.Add(new WorkerThread());
+        }
     }
 
     ~ThreadPoolManager()
     {
-        try
+        Shutdown();
+    }
+
+
+
+    public void Start()
+    {
+        new Thread(() =>
         {
             foreach (var thread in _threadPool)
             {
-                thread.Abort();
+                thread.Start();
+            }
+        }).Start();
+    }
+
+
+    public void Stop()
+    {
+        foreach (var thread in _threadPool)
+        {
+            thread.Join();
+        }
+    }
+
+
+    public void Stop(int milliseconds)
+    {
+        foreach (var thread in _threadPool)
+        {
+            thread.Join(milliseconds);
+        }
+    }
+
+
+    public void StopAsync()
+    {
+        new Thread(Stop).Start();
+    }
+
+
+    public void StopAsync(int milliseconds)
+    {
+        new Thread(() => Stop(milliseconds)).Start();
+    }
+
+
+    public void ShutdownAsync()
+    {
+        new Thread(Shutdown).Start();
+    }
+
+
+    public void AddWork(WorkerThread.Function job)
+    {
+        int leastWork = Int32.MaxValue;
+        int iLeastWork = 0;
+
+        for (int i = 0; i < _maxThreads; i++)
+        {
+            int work = _threadPool[i].NumJobs;
+
+            if (work == 0)
+            {
+                iLeastWork = i;
+                break;
+            }
+
+            if (work < leastWork)
+            {
+                leastWork = work;
+                iLeastWork = i;
             }
         }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-        }
+
+        _threadPool[iLeastWork].AddNewJob(job);
+    }
+
+
+    public void Shutdown()
+    {
+        foreach (var thread in _threadPool)
+            thread.Abort();
     }
 }

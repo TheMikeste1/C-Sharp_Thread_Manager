@@ -7,15 +7,6 @@ using System.Threading;
 namespace C_Sharp_Threading_Test
 {
 
-
-
-
-
-
-
-
-
-
     class Program
     {
         public static void ThreadTest(int num)
@@ -27,23 +18,21 @@ namespace C_Sharp_Threading_Test
 
         static void Main(string[] args)
         {
-            int num = 1234;
-
-
-            WorkerThread wtm = new WorkerThread();
-            wtm.Start();
-
-            List<WorkerThread.Function> functions = new List<WorkerThread.Function>();
-
-            for (int i = 0; i < 100; i++)
+            ThreadPoolManager tpm = new ThreadPoolManager();
+            
+            tpm.Start();
+            
+            for (int i = 0; i < 20; i++)
             {
                 var i1 = i;
-                functions.Add((() => ThreadTest(i1)));
+                tpm.AddWork(() =>
+                {
+                    ThreadTest(i1);
+                    Thread.Sleep(1000);
+                });
             }
-
-            wtm.AddNewJob(functions);
-
-            wtm.Join();
+            
+            tpm.Stop();
         }
     }
 }
